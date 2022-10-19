@@ -1,8 +1,14 @@
+import sys
 import arcpy
 import json
 from PySide6 import QtWidgets
 from resources.setting import model_setting
 from configparser import ConfigParser
+from datetime import datetime
+import logging
+
+# from arcgis.features.layer import FeatureLayerCollection
+# from arcgis.features.layer import FeatureLayer
 
 def ParseDateTime(txt):
     import datetime
@@ -18,6 +24,13 @@ def isBlank(myString):
 def isNotBlank(myString):
     return bool(myString and myString.strip())
 
+def init_log():
+    global nome_log
+    nome_log = "geositi_"+datetime.now().strftime("%d%m%Y_%H%M")+".log"
+    logging.basicConfig(filename=r'.\LOG\\'+nome_log, level=logging.INFO)
+    logging.info('script_startato')
+    log = logging.getLogger(nome_log)
+    return log
 
 class Model():
     def __init__(self):
@@ -193,5 +206,72 @@ class Model():
         except:
             raise Exception("ATTENZIONE: si è verificato un errore in saveJsonFile")
 
+    def sendToPortal(self):
+        from arcgis.gis import GIS
+        # Lettura file di config
+        sys.dont_write_bytecode = True
+        gis = GIS(self.url_gis, self.user, self.pwd)
+        # search_result = gis.content.search("Cavità artificiali v3.1C", "Feature Layer")
+        search_result = gis.content.search("geodatabase_cavita_test_gdb", "Feature Layer")
 
+        print("Connessione ...")
+        if len(search_result) > 0:
+            arcpy.env.workspace = self.gdb
+            if arcpy.Exists(self.fc):
+                cavita_item = search_result[0]
+                cavita_fl = cavita_item.layers[0]
+                print(cavita_fl)
+                with arcpy.da.SearchCursor(self.fc, self.final_item) as cursor:
+
+                    # coordinate della cavita
+                    for row in cursor:
+                        for pnt in row[0]:
+                            lonp = pnt.X
+                            latp = pnt.Y
+
+                        record_dict = {
+                            "attributes":
+                                {
+                                    "codice_identificatico_catasto_s": row[1],
+                                    "denominazione_comunemente_usata": row[2],
+                                    "data_di_prima_compilazione": row[3],
+                                    "data_ultimo_aggiornamento": row[4],
+                                    "regione": row[5],
+                                    "provincia": row[6],
+                                    "comune": row[7],
+                                    "localit_frazionevia": row[8],
+                                    "latitudine_dd": row[9],
+                                    "longitudine_dd": row[10],
+                                    "tipologia_primaria": row[11],
+                                    "tipologia": row[12],
+                                    "note_generali": row[13],
+                                    "riferimenti_bibliografici": row[14],
+                                    "created_date": row[15],
+                                    "created_user": row[16],
+                                    "last_edited_date": row[17],
+                                    "last_edited_user": row[18],
+                                    "quota_altimetrica": row[19]
+                                },
+                            "geometry": {"x": lonp, "y": latp, "spatialReference": {"wkid": 4326}}
+                        }
+                        new_record = cavita_fl.edit_features(adds=[record_dict])
+                        rec = new_record['addResults']
+                        rec_dict = rec[0]
+                        idobj = rec_dict['objectId']
+                        print("insert record id: " + str(idobj))
+
+                        # add attach
+                        if isNotBlank(row[20]):
+                            print("insert attach --> " + row[20])
+                            cavita_fl.attachments.add(idobj, row[20])
+                        if isNotBlank(row[22]):
+                            print("insert attach --> " + row[22])
+                            cavita_fl.attachments.add(idobj, row[22])
+
+                    # stampa il numero di elementi inseriti
+                    print(cavita_fl.query(return_count_only=True))
+
+            else:
+                print("Errore: la feature class  " + self.fc + " non esiste!")
+                return
 

@@ -20,3 +20,15 @@ class MainController:
             return data_mat
         except Exception as err:
             raise("ATTENZIONE: si è verificato un errore")
+
+    def saveGeoJsonFile(self):
+        try:
+            self.model.saveGeoJsonFile()
+        except Exception as err:
+            raise ("ATTENZIONE: si è verificato un errore")
+
+    def sendToPortal(self):
+        try:
+            self.model.sendToPortal()
+        except Exception as err:
+            raise ("ATTENZIONE: si è verificato un errore")

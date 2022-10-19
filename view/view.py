@@ -55,7 +55,6 @@ class MainView(QWidget):
 
         self.setLayout(layout)
 
-    # funzioni
     def OpenGeoJsonFile(self):
         try:
             self.setWindowTitle(self.mainController.getGeoJsonFile())
@@ -77,10 +76,16 @@ class MainView(QWidget):
             self.setWindowTitle(err)
 
     def SaveGeoJsonFile(self):
-        pass
+        try:
+            self.mainController.saveGeoJsonFile()
+        except Exception as err:
+            self.setWindowTitle(err)
 
     def SendToPortal(self):
-        pass
+        try:
+            self.mainController.sendToPortal()
+        except Exception as err:
+            self.setWindowTitle(err)
 
     def print_row(self):
         pass
