@@ -2,7 +2,7 @@ import arcpy
 import json
 from PySide6 import QtWidgets
 from resources.setting import model_setting
-
+from configparser import ConfigParser
 
 def ParseDateTime(txt):
     import datetime
@@ -20,18 +20,29 @@ def isNotBlank(myString):
 
 
 class Model():
+    def __init__(self):
+        cfg = ConfigParser()
+        cfg.read('./CONFIG.ini')
+        self.url_gis = cfg.get('PORTAL', 'INDIRIZZO_PORTAL')
+        self.user = cfg.get('PORTAL', 'UTENTE')
+        self.pwd = cfg.get('PORTAL', 'PASSWORD')
+        self.path_images = cfg.get('DATI', 'PATH')
+        self.fc = cfg.get('FEATURE CLASS', 'FC_CAVITA')
+        self.fc_template = cfg.get('FEATURE CLASS', 'FC_TEMPLATE')
+        self.gdb = cfg.get('GEODATABASE', 'GDB')
+        self.json_file = ""
+
     def openGeojsonFile(self):
         file_name = QtWidgets.QFileDialog.getOpenFileName(None, "Open", "", "GeoJson (*.json)")
         if file_name[0] != '':
-            json_file = file_name[0]
-            return json_file
+            self.json_file = file_name[0]
         else:
             raise Exception("ATTENZIONE: Nessun file selezionato")
 
-    def importGeojsonFile(self, json_file, path_images):
+    def importGeojsonFile(self):
         escapes = ''.join([chr(char) for char in range(1, 32)])
-        if json_file != '':
-            path_to_file = json_file
+        if self.json_file != '':
+            path_to_file = self.json_file
             f = open(path_to_file, 'r', encoding="utf8", errors="ignore")
             try:
                 f.seek(0)
@@ -103,7 +114,7 @@ class Model():
 
                     if len(attachments) > 0:
                         if len(attachments[0].strip()):
-                            data_item.append(path_images + '/' + attachments[0])
+                            data_item.append(self.path_images + '/' + attachments[0])
                             data_item.append(descrizione[0])
                     else:
                         data_item.append("")
@@ -111,7 +122,7 @@ class Model():
 
                     if len(attachments) > 1:
                         if len(attachments[1].strip()):
-                            data_item.append(path_images + '/' + attachments[1])
+                            data_item.append(self.path_images + '/' + attachments[1])
                             data_item.append(descrizione[1])
                     else:
                         data_item.append("")
@@ -127,59 +138,60 @@ class Model():
         else:
             raise Exception("ATTENZIONE: Nessun file selezionato")
 
-    def saveGeoJsonFile(self, gdb, fc, fc_template):
-        arcpy.env.workspace = gdb
-        # remove old cavita e crea new cavita
-        out_sr = arcpy.SpatialReference("WGS 1984")
-        if arcpy.Exists(fc):
-            arcpy.Delete_management(fc, "")
-            print(fc + "--> cancellata ....")
+    def saveGeoJsonFile(self):
 
-        geom = arcpy.Describe(fc_template).shapeType
-        arcpy.CreateFeatureclass_management(gdb, fc, geom, fc_template, spatial_reference=out_sr)
-        print(fc + "--> creata ....")
+        try:
+            arcpy.env.workspace = self.gdb
+            # remove old cavita e crea new cavita
+            out_sr = arcpy.SpatialReference("WGS 1984")
+            if arcpy.Exists(self.fc):
+                arcpy.Delete_management(self.fc, "")
 
-        # elenco campi mappati
-        source = []
-        for k in model_setting.mapping_item:
-            source.append(model_setting.mapping_item[k])
-        print(source)
+            geom = arcpy.Describe(self.fc_template).shapeType
+            arcpy.CreateFeatureclass_management(self.gdb, self.fc, geom, self.fc_template, spatial_reference=out_sr)
 
-        # import dei dati
-        campi_data = ['data_di_prima_compilazione', 'data_ultimo_aggiornamento', 'created_date', 'last_edited_date']
-
-        model = self.tableWidget.model()
-        columnCount = model.columnCount()
-        rowCount = model.rowCount()
-        print(rowCount)
-        for row in range(model.rowCount()):
-            row_data = {}
-            for column in range(columnCount):
-                index = model.index(row, column)
-                text = str(model.data(index))
-                row_data[model_setting.source_item[column]] = text
-
-            # print(row_data)
-            # mapping
-            row = []
+            # elenco campi mappati
+            source = []
             for k in model_setting.mapping_item:
-                if k in campi_data:
-                    row.append(ParseDateTime(row_data[k]))
-                else:
-                    row.append(row_data[k])
-            print(row)
+                source.append(model_setting.mapping_item[k])
 
-            # insert data
-            with arcpy.da.InsertCursor(fc, ['SHAPE@'] + source) as irows:
-                _lon = float(row_data['latitudine'])
-                _lat = float(row_data['longitudine'])
-                esri_json = {
-                    "x": _lon,
-                    "y": _lat,
-                    "spatialReference": {
-                        "wkid": 4326}}
-                point = arcpy.AsShape(esri_json, True)
-                irows.insertRow([point] + [row[i] for i in range(0, len(row))])
+            # import dei dati
+            campi_data = ['data_di_prima_compilazione', 'data_ultimo_aggiornamento', 'created_date', 'last_edited_date']
 
-        print('done')
+            model = self.tableWidget.model()
+            columnCount = model.columnCount()
+            rowCount = model.rowCount()
+            print(rowCount)
+            for row in range(model.rowCount()):
+                row_data = {}
+                for column in range(columnCount):
+                    index = model.index(row, column)
+                    text = str(model.data(index))
+                    row_data[model_setting.source_item[column]] = text
+
+                # print(row_data)
+                # mapping
+                row = []
+                for k in model_setting.mapping_item:
+                    if k in campi_data:
+                        row.append(ParseDateTime(row_data[k]))
+                    else:
+                        row.append(row_data[k])
+                print(row)
+
+                # insert data
+                with arcpy.da.InsertCursor(self.fc, ['SHAPE@'] + source) as irows:
+                    _lon = float(row_data['latitudine'])
+                    _lat = float(row_data['longitudine'])
+                    esri_json = {
+                        "x": _lon,
+                        "y": _lat,
+                        "spatialReference": {
+                            "wkid": 4326}}
+                    point = arcpy.AsShape(esri_json, True)
+                    irows.insertRow([point] + [row[i] for i in range(0, len(row))])
+        except:
+            raise Exception("ATTENZIONE: si è verificato un errore in saveJsonFile")
+
+
 
